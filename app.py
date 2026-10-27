@@ -1,14 +1,14 @@
+
 import re
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 # ============================================================
-# BrandGuard AI — Midnight Navy + Cyan UI
-# Keeps the existing SQLite database and review workflow.
+# BrandGuard AI — Round 3
+# Content Review + Evidence Verification + Review History
 # ============================================================
 
 st.set_page_config(
@@ -31,15 +31,10 @@ st.markdown(
     :root {
         --bg: #0b1220;
         --panel: #111c2e;
-        --panel-2: #172438;
         --line: #293950;
         --text: #f1f5f9;
         --muted: #9fb0c5;
         --cyan: #67e8f9;
-        --cyan-strong: #06b6d4;
-        --green: #86efac;
-        --amber: #fcd34d;
-        --red: #fca5a5;
     }
 
     html, body, [class*="css"] {
@@ -74,20 +69,18 @@ st.markdown(
 
     h1, h2, h3 {
         font-family: 'Space Grotesk', sans-serif !important;
-        letter-spacing: -0.025em;
         color: #f8fafc !important;
     }
 
-    p, label, .stMarkdown, [data-testid="stCaptionContainer"] {
+    p, label, .stMarkdown {
         color: var(--text);
     }
 
     [data-testid="stMetric"] {
         background: linear-gradient(145deg, #142238, #101a2b);
         border: 1px solid #2a3b52;
-        padding: 18px 20px;
+        padding: 18px;
         border-radius: 16px;
-        box-shadow: 0 8px 24px rgba(0,0,0,.12);
     }
 
     [data-testid="stMetricLabel"] {
@@ -100,21 +93,20 @@ st.markdown(
     }
 
     .hero {
-        background: linear-gradient(120deg, rgba(17,28,46,.98), rgba(18,47,66,.95));
+        background: linear-gradient(120deg, #111c2e, #122f42);
         border: 1px solid #2b5267;
         border-radius: 22px;
         padding: 28px 30px;
-        margin: 0 0 24px 0;
-        box-shadow: 0 18px 45px rgba(0,0,0,.16);
+        margin-bottom: 24px;
     }
 
-    .hero-kicker {
+    .hero-kicker, .section-kicker {
         color: #67e8f9;
         font-size: .76rem;
         font-weight: 700;
-        letter-spacing: .16em;
+        letter-spacing: .13em;
         text-transform: uppercase;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
     }
 
     .hero-title {
@@ -122,34 +114,13 @@ st.markdown(
         color: #f8fafc;
         font-size: clamp(2rem, 4vw, 3rem);
         font-weight: 700;
-        letter-spacing: -.05em;
         line-height: 1.1;
-        margin: 0 0 10px 0;
+        margin-bottom: 12px;
     }
 
-    .hero-copy {
-        color: #c0d0e0;
-        font-size: 1rem;
-        max-width: 760px;
+    .hero-copy, .muted {
+        color: #b9c9dc;
         line-height: 1.7;
-        margin-bottom: 0;
-    }
-
-    .section-kicker {
-        color: #67e8f9;
-        font-size: .75rem;
-        font-weight: 700;
-        letter-spacing: .12em;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-    }
-
-    .panel {
-        background: rgba(17,28,46,.78);
-        border: 1px solid #293950;
-        border-radius: 18px;
-        padding: 22px;
-        margin-bottom: 16px;
     }
 
     .status-pill {
@@ -163,29 +134,17 @@ st.markdown(
         font-weight: 700;
     }
 
-    .muted {
-        color: #9fb0c5;
-        font-size: .9rem;
-        line-height: 1.6;
-    }
-
     div.stButton > button, div.stDownloadButton > button {
         border-radius: 10px;
         border: 1px solid #0891b2;
         font-weight: 700;
-        min-height: 2.8rem;
-        transition: all .15s ease;
+        min-height: 2.7rem;
     }
 
     div.stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #0891b2, #06b6d4);
         color: #061521;
         border: none;
-    }
-
-    div.stButton > button:hover, div.stDownloadButton > button:hover {
-        border-color: #67e8f9;
-        color: #67e8f9;
     }
 
     textarea, input, [data-baseweb="select"] > div {
@@ -206,7 +165,7 @@ st.markdown(
 
     .small-note {
         color: #8ea2ba;
-        font-size: .78rem;
+        font-size: .8rem;
     }
     </style>
     """,
@@ -239,6 +198,7 @@ def save_review(
     risky_claims, status, findings
 ):
     reviewed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     with sqlite3.connect(DB_NAME) as connection:
         connection.execute("""
             INSERT INTO reviews (
@@ -291,6 +251,56 @@ def parse_phrases(text):
     return [phrase.strip() for phrase in text.split(",") if phrase.strip()]
 
 
+RISK_GUIDANCE = {
+    "best in the world":
+        "Superlative claim: define the comparison and provide reliable evidence.",
+    "number one":
+        "Ranking claim: verify the source, category, market, and date.",
+    "no. 1":
+        "Ranking claim: verify the source, category, market, and date.",
+    "100% effective":
+        "Absolute effectiveness claim: substantiate the exact percentage and context.",
+    "100% of customers":
+        "Universal customer-outcome claim: verify the data and methodology.",
+    "works for 100% of customers":
+        "Universal customer-outcome claim: verify the data and methodology.",
+    "works for everyone":
+        "Absolute claim: check whether reliable evidence supports the statement.",
+    "guaranteed results":
+        "Clarify the guarantee terms and verify that the promise can be honored.",
+    "guaranteed to work":
+        "Check the conditions and evidence for the promised outcome.",
+    "guarantees a complete cure":
+        "Medical outcome claim: requires substantiation and qualified review.",
+    "complete cure":
+        "Medical outcome claim: requires substantiation and qualified review.",
+    "cure for acne":
+        "Check appropriate medical evidence and applicable advertising rules.",
+    "cure all":
+        "Absolute cure claim: requires substantiation and qualified review.",
+    "clinically proven":
+        "Identify the clinical study and verify it supports this exact product and claim.",
+    "scientifically proven":
+        "Identify credible research supporting the exact statement.",
+    "instant results":
+        "Provide evidence for the stated speed and conditions.",
+    "in just 24 hours":
+        "Verify evidence supports the stated timeframe.",
+    "within 24 hours":
+        "Verify evidence supports the stated timeframe.",
+    "results in 24 hours":
+        "Verify evidence supports the stated timeframe.",
+    "permanent results":
+        "Provide evidence for the implied duration and conditions.",
+    "zero side effects":
+        "Absolute safety claim: qualified review and reliable evidence are needed.",
+    "risk-free":
+        "Check whether the wording misleadingly implies no risk.",
+    "zero effort":
+        "Check whether the wording creates an unrealistic expectation.",
+}
+
+
 def run_review(content, prohibited_phrases, required_phrases):
     issues = []
     total_rules = 0
@@ -298,6 +308,7 @@ def run_review(content, prohibited_phrases, required_phrases):
 
     for phrase in prohibited_phrases:
         total_rules += 1
+
         if contains_phrase(content, phrase):
             issues.append({
                 "Type": "Prohibited phrase",
@@ -314,6 +325,7 @@ def run_review(content, prohibited_phrases, required_phrases):
 
     for phrase in required_phrases:
         total_rules += 1
+
         if contains_phrase(content, phrase):
             passed_rules += 1
         else:
@@ -323,46 +335,24 @@ def run_review(content, prohibited_phrases, required_phrases):
                 "Severity": "Medium",
                 "Finding": f"Required phrase is missing: '{phrase}'.",
                 "Suggestion": (
-                    f"Include '{phrase}' naturally if appropriate for the content."
+                    f"Include '{phrase}' naturally if appropriate."
                 ),
             })
 
-    score = 100 if total_rules == 0 else round((passed_rules / total_rules) * 100)
+    score = (
+        100 if total_rules == 0
+        else round((passed_rules / total_rules) * 100)
+    )
 
-    # These are phrase-based warning patterns, not proof that a claim is false.
-    # Keep the list explicit and explain to reviewers why each phrase may need evidence.
-    risky_phrases = [
-        "best in the world",
-        "number one",
-        "no. 1",
-        "100% effective",
-        "100% of customers",
-        "works for 100% of customers",
-        "works for everyone",
-        "guaranteed results",
-        "guaranteed to work",
-        "guarantees a complete cure",
-        "complete cure",
-        "cure for acne",
-        "cure all",
-        "clinically proven",
-        "scientifically proven",
-        "instant results",
-        "in just 24 hours",
-        "within 24 hours",
-        "results in 24 hours",
-        "permanent results",
-        "zero side effects",
-        "risk-free",
-        "zero effort",
-    ]
     detected_risks = [
-        phrase for phrase in risky_phrases if contains_phrase(content, phrase)
+        phrase for phrase in RISK_GUIDANCE
+        if contains_phrase(content, phrase)
     ]
 
     status = "NEEDS REVIEW" if issues or detected_risks else "PASS"
 
     finding_lines = []
+
     for issue in issues:
         finding_lines.append(
             f"{issue['Severity']}: {issue['Finding']} "
@@ -374,12 +364,13 @@ def run_review(content, prohibited_phrases, required_phrases):
 
     if detected_risks:
         finding_lines.append(
-            "Risky claims flagged for human review: " + ", ".join(detected_risks)
+            "Risky claims flagged for human review: "
+            + ", ".join(detected_risks)
         )
 
     findings_text = "\n".join(finding_lines)
 
-    report_lines = [
+    report = "\n".join([
         "BrandGuard AI - Compliance Review Report",
         "=" * 45,
         f"Review Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -397,7 +388,7 @@ def run_review(content, prohibited_phrases, required_phrases):
         "",
         "Note: This is a rule-based prototype. Human review is required "
         "for context, factual accuracy, and final approval.",
-    ]
+    ])
 
     return {
         "score": score,
@@ -407,11 +398,44 @@ def run_review(content, prohibited_phrases, required_phrases):
         "detected_risks": detected_risks,
         "status": status,
         "findings_text": findings_text,
-        "report": "\n".join(report_lines),
+        "report": report,
     }
 
 
+# -------------------------------
+# Evidence comparison helper
+# -------------------------------
+def get_terms(text):
+    cleaned_words = re.findall(r"\b[a-zA-Z0-9'-]+\b", text.lower())
+
+    # Ignore common words that usually provide little useful comparison.
+    stop_words = {
+        "the", "and", "for", "with", "this", "that", "from",
+        "have", "has", "had", "are", "was", "were", "our",
+        "your", "their", "they", "them", "into", "after",
+        "before", "within", "which", "will", "would", "could",
+        "should", "about", "been", "being", "than", "then",
+    }
+
+    return {
+        word for word in cleaned_words
+        if len(word) > 3 and word not in stop_words
+    }
+
+
+# -------------------------------
+# Initialize app state and database
+# -------------------------------
 initialize_database()
+
+if "latest_result" not in st.session_state:
+    st.session_state["latest_result"] = None
+
+if "latest_report" not in st.session_state:
+    st.session_state["latest_report"] = None
+
+if "latest_content" not in st.session_state:
+    st.session_state["latest_content"] = ""
 
 
 # -------------------------------
@@ -421,11 +445,18 @@ with st.sidebar:
     st.markdown("## 🛡️ BrandGuard AI")
     st.caption("BRAND INTELLIGENCE")
     st.divider()
+
     page = st.radio(
         "Workspace",
-        ["Content Review", "Review History", "About BrandGuard"],
+        [
+            "Content Review",
+            "Review History",
+            "Evidence Verification",
+            "About BrandGuard",
+        ],
         label_visibility="collapsed",
     )
+
     st.divider()
     st.markdown("**Review engine**")
     st.markdown(
@@ -434,11 +465,11 @@ with st.sidebar:
     )
     st.write("")
     st.markdown(
-        '<p class="muted">Built to help teams spot configured brand-rule '
-        'violations and claims that need human attention.</p>',
+        '<p class="muted">Find configured brand-rule violations '
+        'and claims that need human attention.</p>',
         unsafe_allow_html=True,
     )
-    st.caption("BrandGuard AI • Round 2 build")
+    st.caption("BrandGuard AI • Round 3 build")
 
 
 # -------------------------------
@@ -451,78 +482,87 @@ st.markdown(
       <div class="hero-title">Protect your brand voice.</div>
       <p class="hero-copy">
         Review marketing content against configured guidelines, flag potentially
-        exaggerated claims, and keep a traceable history of your reviews.
+        exaggerated claims, compare claim wording with supplied evidence, and
+        keep a traceable history of your reviews.
       </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-if "latest_report" not in st.session_state:
-    st.session_state["latest_report"] = None
-if "latest_result" not in st.session_state:
-    st.session_state["latest_result"] = None
 
-
-# -------------------------------
-# Content Review page
-# -------------------------------
+# ============================================================
+# PAGE 1 — CONTENT REVIEW
+# ============================================================
 if page == "Content Review":
-    st.markdown('<div class="section-kicker">01 / Brand policy</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="section-kicker">01 / Brand policy</div>',
+        unsafe_allow_html=True,
+    )
     st.header("Configure your guidelines")
     st.markdown(
-        '<p class="muted">Set the phrases to avoid and the terms that must appear '
+        '<p class="muted">Set phrases to avoid and terms that must appear '
         'in your marketing copy.</p>',
         unsafe_allow_html=True,
     )
 
     left, right = st.columns(2, gap="large")
+
     with left:
         prohibited_input = st.text_area(
             "Prohibited words or phrases",
             value="guaranteed, 100% risk-free",
             help="Separate phrases with commas.",
             height=105,
+            key="prohibited_input",
         )
+
     with right:
         required_input = st.text_area(
             "Required words or phrases",
             value="BrandGuard",
             help="Separate phrases with commas.",
             height=105,
+            key="required_input",
         )
 
     st.divider()
-    st.markdown('<div class="section-kicker">02 / Content workspace</div>', unsafe_allow_html=True)
-    st.header("Review marketing content")
     st.markdown(
-        '<p class="muted">Paste your draft below. BrandGuard AI will check your '
-        'configured phrase rules and flag selected claims for human review.</p>',
+        '<div class="section-kicker">02 / Content workspace</div>',
         unsafe_allow_html=True,
+    )
+    st.header("Review marketing content")
+    st.write(
+        "Check configured phrase rules and flag selected claims "
+        "for human review."
     )
 
     with st.form("brandguard_review_form", clear_on_submit=False):
         draft = st.text_area(
             "Marketing draft",
             height=220,
-            placeholder="Example: BrandGuard helps teams review marketing content...",
-            label_visibility="visible",
+            placeholder=(
+                "Example: BrandGuard helps teams review marketing content..."
+            ),
         )
+
         submitted = st.form_submit_button(
-            "🛡️  Run compliance check",
+            "🛡️ Run compliance check",
             type="primary",
             use_container_width=True,
         )
 
     if submitted:
         if not draft.strip():
-            st.warning("Please enter some marketing content before running a review.")
+            st.warning("Please enter marketing content before running a review.")
         else:
             result = run_review(
                 draft,
                 parse_phrases(prohibited_input),
                 parse_phrases(required_input),
             )
+
             save_review(
                 content=draft,
                 score=result["score"],
@@ -532,18 +572,21 @@ if page == "Content Review":
                 status=result["status"],
                 findings=result["findings_text"],
             )
+
             st.session_state["latest_result"] = result
             st.session_state["latest_report"] = result["report"]
             st.session_state["latest_content"] = draft
-            st.session_state["latest_review_time"] = datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            st.success("Review completed and saved to your local review history.")
+
+            st.success("Review completed and saved to local review history.")
 
     result = st.session_state.get("latest_result")
+
     if result:
         st.divider()
-        st.markdown('<div class="section-kicker">03 / Analysis</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-kicker">03 / Analysis</div>',
+            unsafe_allow_html=True,
+        )
         st.header("Review overview")
 
         metric_cols = st.columns(4, gap="medium")
@@ -553,141 +596,151 @@ if page == "Content Review":
         metric_cols[3].metric("Risk flags", len(result["detected_risks"]))
 
         if result["status"] == "PASS":
-            st.success("PASS — No configured rule violations or listed risky claims detected.")
+            st.success(
+                "PASS — No configured rule violations or listed risky "
+                "phrases were detected."
+            )
         else:
-            st.warning("NEEDS REVIEW — Inspect the findings and risky-claim flags before approval.")
+            st.warning(
+                "NEEDS REVIEW — Inspect the findings and risk flags "
+                "before approval."
+            )
 
         st.progress(result["score"] / 100)
         st.caption(
-            "Score is based only on configured required/prohibited phrase rules. "
-            "Risky-claim flags are separate and do not change the score."
+            "The score reflects configured phrase rules only. "
+            "Risk flags are separate and do not change the score."
         )
 
-        issue_tab, risk_tab, report_tab = st.tabs(
-            ["Rule findings", "Risky claims", "Download report"]
-        )
+        issue_tab, risk_tab, report_tab = st.tabs([
+            "Rule findings",
+            "Risky claims",
+            "Download report",
+        ])
 
         with issue_tab:
             if result["issues"]:
                 for issue in result["issues"]:
                     with st.container(border=True):
-                        badge_color = "🔴" if issue["Severity"] == "High" else "🟠"
+                        icon = (
+                            "🔴" if issue["Severity"] == "High"
+                            else "🟠"
+                        )
                         st.markdown(
-                            f"### {badge_color} {issue['Type']} · {issue['Severity']}"
+                            f"### {icon} {issue['Type']} · "
+                            f"{issue['Severity']}"
                         )
                         st.write(issue["Finding"])
                         st.markdown("**Suggested correction**")
                         st.write(issue["Suggestion"])
             else:
-                st.success("No configured prohibited or missing-phrase issues found.")
+                st.success("No configured phrase-rule issues found.")
 
         with risk_tab:
             if result["detected_risks"]:
                 st.warning(
-                    "Potentially risky wording was detected. These flags are prompts for "
-                    "evidence checks and human review; they do not prove a claim is false."
+                    "These phrases may need evidence and human review. "
+                    "Their presence does not prove a claim is false."
                 )
-                risk_guidance = {
-                    "best in the world": "Superlative claim: provide reliable, current evidence and define the comparison.",
-                    "number one": "Ranking claim: provide a credible source, market, category, and date for the ranking.",
-                    "no. 1": "Ranking claim: provide a credible source, market, category, and date for the ranking.",
-                    "100% effective": "Absolute effectiveness claim: require strong evidence that supports the exact percentage and context.",
-                    "100% of customers": "Universal customer-outcome claim: verify the sample, methodology, and supporting data.",
-                    "works for 100% of customers": "Universal customer-outcome claim: verify the sample, methodology, and supporting data.",
-                    "works for everyone": "Absolute claim: check whether reliable evidence supports the statement for all users.",
-                    "guaranteed results": "Guarantee claim: clarify the guarantee terms and verify that the promise can be honored.",
-                    "guaranteed to work": "Guarantee claim: clarify the conditions and provide evidence for the promised outcome.",
-                    "guarantees a complete cure": "Medical outcome claim: requires careful substantiation and qualified human/regulatory review.",
-                    "complete cure": "Medical outcome claim: requires careful substantiation and qualified human/regulatory review.",
-                    "cure for acne": "Medical treatment claim: check approved evidence and applicable advertising rules before publication.",
-                    "cure all": "Absolute cure claim: requires strong substantiation and qualified human/regulatory review.",
-                    "clinically proven": "Evidence claim: identify the clinical study and confirm that it supports this exact product and claim.",
-                    "scientifically proven": "Evidence claim: identify credible research and confirm that it supports this exact statement.",
-                    "instant results": "Speed-of-results claim: provide evidence for the stated timeframe and conditions.",
-                    "in just 24 hours": "Specific timeframe claim: provide evidence that supports this result within the stated timeframe.",
-                    "within 24 hours": "Specific timeframe claim: provide evidence that supports this result within the stated timeframe.",
-                    "results in 24 hours": "Specific timeframe claim: provide evidence that supports this result within the stated timeframe.",
-                    "permanent results": "Long-term outcome claim: provide evidence for the duration and conditions implied.",
-                    "zero side effects": "Absolute safety claim: avoid implying risk is impossible; require qualified review and reliable evidence.",
-                    "risk-free": "Absolute safety claim: check whether the statement misleadingly implies no risk.",
-                    "zero effort": "Effort-free promise: check whether the statement creates an unrealistic or misleading expectation.",
-                }
+
                 for phrase in result["detected_risks"]:
                     with st.container(border=True):
                         st.markdown(f"**⚠️ {phrase}**")
-                        st.write(risk_guidance.get(
-                            phrase,
-                            "Review this wording and verify that reliable evidence supports the exact claim."
-                        ))
-                        st.caption("Suggested action: verify the evidence, narrow the wording if needed, and obtain human approval.")
+                        st.write(RISK_GUIDANCE[phrase])
+                        st.caption(
+                            "Suggested action: check evidence, revise "
+                            "wording if needed, and obtain human approval."
+                        )
             else:
-                st.success("No phrases from the prototype risk list were detected. This does not guarantee factual accuracy or full compliance.")
+                st.success(
+                    "No phrases from the prototype risk list were detected. "
+                    "This does not guarantee factual accuracy or compliance."
+                )
 
         with report_tab:
-            st.markdown(
-                '<p class="muted">Download a text report containing the score, '
-                'content, findings, and suggested corrections.</p>',
-                unsafe_allow_html=True,
+            st.write(
+                "Download a report containing the score, content, "
+                "findings, and suggested corrections."
             )
             st.download_button(
                 "⬇️ Download review report",
-                data=st.session_state["latest_report"],
+                data=st.session_state["latest_report"] or "",
                 file_name="brandguard_review_report.txt",
                 mime="text/plain",
                 use_container_width=True,
             )
 
         with st.expander("View original content"):
-            st.code(st.session_state.get("latest_content", ""), language=None)
+            st.code(
+                st.session_state.get("latest_content", ""),
+                language=None,
+            )
 
     st.divider()
     st.markdown(
         '<p class="small-note">BrandGuard AI is a rule-based prototype. '
-        'It does not independently verify factual accuracy or guarantee complete compliance. '
-        'Human review is required before publication.</p>',
+        'It does not independently verify factual accuracy or guarantee '
+        'complete compliance. Human review is required before publication.</p>',
         unsafe_allow_html=True,
     )
 
 
-# -------------------------------
-# Review History page
-# -------------------------------
+# ============================================================
+# PAGE 2 — REVIEW HISTORY
+# ============================================================
 elif page == "Review History":
-    st.markdown('<div class="section-kicker">04 / Audit trail</div>', unsafe_allow_html=True)
-    st.header("Review history")
+
     st.markdown(
-        '<p class="muted">Browse saved reviews stored in your local SQLite database. '
-        'History remains available after restarting while the database file is preserved.</p>',
+        '<div class="section-kicker">04 / Audit trail</div>',
         unsafe_allow_html=True,
+    )
+    st.header("Review history")
+    st.write(
+        "Browse saved reviews in your local SQLite database. "
+        "Records remain available while the database file is preserved."
     )
 
     history = get_review_history()
+
     if history.empty:
-        st.info("No reviews saved yet. Run a content review to create your first history record.")
+        st.info(
+            "No reviews saved yet. Run a content review to create "
+            "your first history record."
+        )
     else:
         total_reviews = len(history)
         avg_score = round(float(history["Score (%)"].mean()))
         total_issues = int(history["Issues"].sum())
+
         h1, h2, h3 = st.columns(3)
         h1.metric("Saved reviews", total_reviews)
         h2.metric("Average score", f"{avg_score}%")
         h3.metric("Recorded rule issues", total_issues)
 
-        st.dataframe(history, use_container_width=True, hide_index=True)
+        st.dataframe(
+            history,
+            use_container_width=True,
+            hide_index=True,
+        )
 
         st.markdown("### Inspect a saved review")
+
         review_ids = history["Review ID"].tolist()
+
         selected_id = st.selectbox(
             "Choose a review",
             options=review_ids,
             format_func=lambda review_id: (
                 f"Review #{review_id} — "
                 + history.loc[
-                    history["Review ID"] == review_id, "Reviewed At"
+                    history["Review ID"] == review_id,
+                    "Reviewed At",
                 ].iloc[0]
             ),
         )
+
         details = get_review_details(selected_id)
+
         if details:
             with st.container(border=True):
                 st.markdown("**Original marketing content**")
@@ -696,39 +749,172 @@ elif page == "Review History":
                 st.text(details[1])
 
 
-# -------------------------------
-# About page
-# -------------------------------
-else:
-    st.markdown('<div class="section-kicker">05 / Product information</div>', unsafe_allow_html=True)
-    st.header("About BrandGuard AI")
+# ============================================================
+# PAGE 3 — EVIDENCE VERIFICATION
+# ============================================================
+elif page == "Evidence Verification":
+
     st.markdown(
-        """
-        BrandGuard AI is a prototype for reviewing marketing copy against
-        configurable brand phrase rules.
+        '<div class="section-kicker">05 / Evidence check</div>',
+        unsafe_allow_html=True,
+    )
+    st.header("Evidence-based claim verification")
 
-        **Current capabilities**
-        - Prohibited-phrase detection
-        - Required-phrase checks
-        - Rule-based compliance scoring
-        - Suggested corrections for detected rule issues
-        - Expanded risky-claim phrase checks with explanations and suggested review actions
-        - Downloadable review reports
-        - Persistent review history using SQLite
-
-        **Technology**
-        - Python and Streamlit for the application interface
-        - Regular expressions for phrase matching
-        - SQLite for saved review records
-        - Pandas for review-history display
-
-        **Known limitations**
-        - The app uses configured phrase rules rather than a trained AI model.
-        - Risky-claim flags identify phrases for review; they do not prove claims are false.
-        - The score does not establish factual accuracy or complete brand compliance.
-        - The database is stored locally alongside the app and is not a shared multi-user database.
-        """
+    st.write(
+        "Compare a marketing claim with evidence supplied by the user. "
+        "This is a preliminary text comparison, not factual verification."
     )
 
+    claim = st.text_area(
+        "Marketing claim",
+        placeholder=(
+            "Example: Our product improves skin hydration within 24 hours."
+        ),
+        key="evidence_claim",
+    )
+
+    evidence = st.text_area(
+        "Supporting evidence",
+        placeholder=(
+            "Paste a relevant study excerpt, approved document text, "
+            "or source notes."
+        ),
+        key="evidence_text",
+    )
+
+    source = st.text_input(
+        "Source title or URL (optional)",
+        key="evidence_source",
+    )
+
+    if st.button(
+        "Check claim against evidence",
+        type="primary",
+        use_container_width=True,
+    ):
+        if not claim.strip() or not evidence.strip():
+            st.warning("Enter both a claim and supporting evidence.")
+        else:
+            claim_terms = get_terms(claim)
+            evidence_terms = get_terms(evidence)
+
+            overlap = claim_terms & evidence_terms
+
+            coverage = (
+                len(overlap) / len(claim_terms)
+                if claim_terms else 0
+            )
+
+            st.subheader("Preliminary result")
+
+            if coverage >= 0.6:
+                st.info(
+                    "Many claim terms appear in the supplied evidence. "
+                    "This does not prove the claim is supported."
+                )
+            elif coverage > 0:
+                st.warning(
+                    "Some wording overlaps with the evidence. "
+                    "A human reviewer should inspect the source."
+                )
+            else:
+                st.error(
+                    "No meaningful wording overlap was found. "
+                    "This does not prove the claim is false."
+                )
+
+            st.metric("Claim-term overlap", f"{coverage:.0%}")
+
+            st.write(
+                "**Overlapping terms:**",
+                ", ".join(sorted(overlap)) if overlap else "None",
+            )
+
+            if source.strip():
+                st.write("**Source provided:**", source)
+
+            st.markdown("### Human review checklist")
+
+            st.checkbox(
+                "The source is credible and relevant.",
+                key="check_source_credible",
+            )
+            st.checkbox(
+                "The evidence refers to the same product.",
+                key="check_same_product",
+            )
+            st.checkbox(
+                "The study date and methodology have been checked.",
+                key="check_methodology",
+            )
+            st.checkbox(
+                "The evidence supports the exact wording and timeframe.",
+                key="check_exact_claim",
+            )
+
+            st.warning(
+                "Word overlap is not proof of factual support. Check the "
+                "source, study design, product, date, and context before "
+                "approving the claim."
+            )
+
+            st.caption(
+                "This prototype does not retrieve sources, evaluate "
+                "scientific quality, or independently establish truth."
+            )
+
+
+# ============================================================
+# PAGE 4 — ABOUT BRANDGUARD
+# ============================================================
+else:
+
+    st.markdown(
+        '<div class="section-kicker">06 / Product information</div>',
+        unsafe_allow_html=True,
+    )
+    st.header("About BrandGuard AI")
+
+    st.write(
+        "BrandGuard AI is a prototype for reviewing marketing copy "
+        "against configurable brand phrase rules."
+    )
+
+    st.markdown("### Current capabilities")
+    st.markdown("""
+    - Prohibited-phrase detection
+    - Required-phrase checks
+    - Rule-based compliance scoring
+    - Suggested corrections for rule violations
+    - Risky-claim phrase detection with explanations
+    - Preliminary comparison of claim wording with supplied evidence
+    - Downloadable review reports
+    - Persistent review history using SQLite
+    """)
+
+    st.markdown("### Technology")
+    st.markdown("""
+    - Python and Streamlit for the application interface
+    - Regular expressions for phrase matching
+    - SQLite for saved review records
+    - Pandas for review-history display
+    """)
+
+    st.markdown("### Known limitations")
+    st.markdown("""
+    - The app uses configured phrase rules rather than a trained AI model.
+    - Risk flags do not prove that claims are false.
+    - Evidence comparison measures word overlap only.
+    - The score does not establish factual accuracy or complete compliance.
+    - The database is local to this app and is not a shared multi-user database.
+    """)
+
+
+# -------------------------------
+# Footer
+# -------------------------------
 st.divider()
-st.caption("🛡️ BrandGuard AI  ·  Midnight Navy + Cyan  ·  Rule-based prototype")
+st.caption(
+    "🛡️ BrandGuard AI · Midnight Navy + Cyan · "
+    "Rule-based prototype"
+)
