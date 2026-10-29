@@ -5,3 +5,13 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Local database and test data
+*.db
+*.sqlite
+*.sqlite3
+
+# Local backups and temporary diff files
+app_backup.py
+BrandGuardAI_Round3_Upgraded.py
+app_diff.txt
