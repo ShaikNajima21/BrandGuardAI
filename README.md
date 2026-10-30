@@ -7,7 +7,6 @@
 ## Live Applications
 
 - **Round 3 Application:** https://brandguard-ai-round3.streamlit.app/
-- **Main Application:** https://brandguard-ai.streamlit.app/
 
 ## Features
 
